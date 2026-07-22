@@ -9,6 +9,7 @@ import { Runner } from './core/runner';
 import { readIndex, writeTerminalLog } from './core/logStore';
 import { CommandSpec, RequestFile } from './core/types';
 import { AI_SPEC_MD, GITIGNORE, SAMPLE_COMMANDS_JSON } from './templates';
+import { HistoryNode, HistoryTreeProvider } from './ui/historyTree';
 import { LogDocumentProvider } from './ui/logDocument';
 import { RunnerStatusBar } from './ui/statusBar';
 import { CommandTreeProvider, Node, RequestTreeProvider } from './ui/trees';
@@ -29,7 +30,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const commandTree = new CommandTreeProvider(commandStore, runner, git);
   const requestTree = new RequestTreeProvider(requestStore, runner);
+  const historyTree = new HistoryTreeProvider(paths);
   const logProvider = new LogDocumentProvider();
+
+  // logs/index.json の変更を監視する。同一プロセスの実行は runner.onDidChange で
+  // 拾えるが、別ウィンドウやAIによる外部変更にも追従できるようファイルも見る。
+  const indexWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(folder, '.vscode/ai-runner/logs/index.json'),
+  );
+  indexWatcher.onDidCreate(() => void historyTree.load());
+  indexWatcher.onDidChange(() => void historyTree.load());
+  indexWatcher.onDidDelete(() => void historyTree.load());
 
   context.subscriptions.push(
     runner,
@@ -37,15 +48,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     requestStore,
     git,
     statusBar,
+    indexWatcher,
     vscode.workspace.registerTextDocumentContentProvider(LogDocumentProvider.scheme, logProvider),
     vscode.window.createTreeView('aiRunner.commands', { treeDataProvider: commandTree }),
     vscode.window.createTreeView('aiRunner.requests', { treeDataProvider: requestTree }),
+    vscode.window.createTreeView('aiRunner.history', { treeDataProvider: historyTree }),
   );
 
   const refreshAll = () => {
     commandTree.refresh();
     requestTree.refresh();
     statusBar.update();
+    // 実行の開始・終了で index.json が更新されるため、履歴も読み直す。
+    void historyTree.load();
     syncTicker();
   };
 
@@ -61,6 +76,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ticker = setInterval(() => {
         commandTree.refresh();
         requestTree.refresh();
+        // 実行中の項目の相対時刻を更新する。データは読み直さず再描画のみ。
+        historyTree.refresh();
       }, 1000);
     } else if (!needed && ticker) {
       clearInterval(ticker);
@@ -96,17 +113,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   register('aiRunner.stop', (node: Node) => runner.stop(keyOf(node)));
   register('aiRunner.reject', (node: Node) => rejectRequest(node));
   register('aiRunner.openLog', (node: Node) => openLog(node));
+  register('aiRunner.openHistoryLog', (node: HistoryNode) => openHistoryLog(node));
   register('aiRunner.showOutput', () => runner.showOutput());
   register('aiRunner.pin', (node: Node) => commandStore.setPinned(keyOf(node), true));
   register('aiRunner.unpin', (node: Node) => commandStore.setPinned(keyOf(node), false));
   register('aiRunner.refresh', async () => {
-    await Promise.all([commandStore.load(), requestStore.load(), git.load()]);
+    await Promise.all([commandStore.load(), requestStore.load(), git.load(), historyTree.load()]);
   });
+  register('aiRunner.refreshHistory', () => historyTree.load());
   register('aiRunner.editCommands', () => openCommandsFile());
   register('aiRunner.initWorkspace', () => initWorkspace());
   register('aiRunner.openReadme', () => openReadme());
 
-  await Promise.all([commandStore.load(), requestStore.load(), git.load()]);
+  await Promise.all([commandStore.load(), requestStore.load(), git.load(), historyTree.load()]);
 
   // ── 以下、上のコマンド登録から呼ばれる実装 ──
 
@@ -218,9 +237,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('このコマンドの実行ログはまだありません。');
       return;
     }
-    // 実ファイルではなく仮想ドキュメントとして開く。エクスプローラーが logs/ を
-    // 自動展開して大量のログで埋まるのを避けるため（LogDocumentProvider を参照）。
-    const uri = LogDocumentProvider.uriFor(target);
+    await showLog(target);
+  }
+
+  function openHistoryLog(node: HistoryNode): Promise<void> {
+    return showLog(path.join(paths.workspaceRoot, node.entry.logFile));
+  }
+
+  /**
+   * ログを仮想ドキュメントとして開く。実ファイルを開くとエクスプローラーが logs/ を
+   * 自動展開して大量のログで埋まるため（LogDocumentProvider を参照）。
+   */
+  async function showLog(absLogPath: string): Promise<void> {
+    const uri = LogDocumentProvider.uriFor(absLogPath);
     // 同じログを既に開いている場合に備え、最新内容へ更新してから表示する。
     logProvider.refresh(uri);
     const doc = await vscode.workspace.openTextDocument(uri);

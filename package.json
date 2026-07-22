@@ -40,13 +40,18 @@
       "aiRunner": [
         {
           "id": "aiRunner.requests",
-          "name": "AIリクエスト",
-          "contextualTitle": "AIリクエスト"
+          "name": "承認待ち",
+          "contextualTitle": "承認待ち"
         },
         {
           "id": "aiRunner.commands",
           "name": "コマンド",
           "contextualTitle": "コマンド"
+        },
+        {
+          "id": "aiRunner.history",
+          "name": "履歴",
+          "contextualTitle": "履歴"
         }
       ]
     },
@@ -58,6 +63,10 @@
       {
         "view": "aiRunner.commands",
         "contents": "登録済みのコマンドがありません。\n[commands.json を作成](command:aiRunner.initWorkspace)"
+      },
+      {
+        "view": "aiRunner.history",
+        "contents": "まだ実行履歴がありません。\nコマンドやAIリクエストを実行すると、結果がここに新しい順で残ります。"
       }
     ],
     "commands": [
@@ -113,6 +122,16 @@
       {
         "command": "aiRunner.openReadme",
         "title": "AI Runner: AI向け仕様を表示"
+      },
+      {
+        "command": "aiRunner.openHistoryLog",
+        "title": "ログを開く",
+        "icon": "$(output)"
+      },
+      {
+        "command": "aiRunner.refreshHistory",
+        "title": "履歴を再読み込み",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -130,6 +149,11 @@
         {
           "command": "aiRunner.showOutput",
           "when": "view == aiRunner.requests",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aiRunner.refreshHistory",
+          "when": "view == aiRunner.history",
           "group": "navigation@1"
         }
       ],
@@ -163,6 +187,11 @@
           "command": "aiRunner.openLog",
           "when": "viewItem =~ /^(command|request)\\./",
           "group": "1_log"
+        },
+        {
+          "command": "aiRunner.openHistoryLog",
+          "when": "viewItem == history",
+          "group": "inline@1"
         }
       ],
       "commandPalette": [
@@ -188,6 +217,10 @@
         },
         {
           "command": "aiRunner.openLog",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.openHistoryLog",
           "when": "false"
         }
       ]

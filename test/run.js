@@ -25,6 +25,7 @@ const { parseCommandsFile, parseRequestFile, ValidationError } = require('../out
 const { readIndex, writeTerminalLog, RunLogWriter } = require('../out/core/logStore');
 const { formatAgo, formatDuration, runningDescription } = require('../out/ui/trees');
 const { LogDocumentProvider } = require('../out/ui/logDocument');
+const { HistoryTreeProvider } = require('../out/ui/historyTree');
 
 async function makeWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-runner-test-'));
@@ -355,6 +356,65 @@ test('通し: 拒否してもAIが待ち続けないようログが残る', asyn
 
   const index = await readIndex(paths);
   assert.equal(index.runs[0].status, 'rejected');
+});
+
+test('履歴: 実行すると新しい順で履歴に載り、ログパスが辿れる', async () => {
+  const { paths } = await makeWorkspace();
+  const runner = new Runner();
+  await runner.run({ paths, source: 'command', spec: { id: 'first', label: '最初', kind: 'oneshot', command: 'echo 1' } });
+  await runner.run({
+    paths,
+    source: 'request',
+    spec: { id: 'second', label: '次', kind: 'oneshot', command: 'echo 2; exit 1' },
+  });
+  runner.dispose();
+
+  const history = new HistoryTreeProvider(paths);
+  await history.load();
+  const nodes = history.getChildren();
+  assert.equal(nodes.length, 2);
+  assert.equal(nodes[0].entry.label, '次', '最新が先頭に来ること');
+  assert.equal(nodes[0].entry.status, 'failed');
+  assert.equal(nodes[1].entry.label, '最初');
+
+  // TreeItem が status を反映し、クリックでログを開くコマンドが割り当たること
+  const item = history.getTreeItem(nodes[0]);
+  assert.match(String(item.description), /失敗/);
+  assert.equal(item.command.command, 'aiRunner.openHistoryLog');
+  assert.equal(item.command.arguments[0], nodes[0]);
+
+  // 履歴項目の logFile から実ログへ辿れること（クリック時の解決と同じ経路）
+  const provider = new LogDocumentProvider();
+  const abs = path.join(paths.workspaceRoot, nodes[0].entry.logFile);
+  const content = await provider.provideTextDocumentContent(LogDocumentProvider.uriFor(abs));
+  assert.match(content, /echo 2/);
+});
+
+test('履歴: 拒否したリクエストも履歴に残る', async () => {
+  const { paths } = await makeWorkspace();
+  await writeTerminalLog(
+    paths,
+    {
+      runId: 'deploy',
+      source: 'request',
+      requestId: 'deploy',
+      label: '本番デプロイ',
+      kind: 'oneshot',
+      command: 'npm run deploy',
+      cwd: '.',
+    },
+    'rejected',
+    '手動で行うため',
+  );
+
+  const history = new HistoryTreeProvider(paths);
+  await history.load();
+  const nodes = history.getChildren();
+  assert.equal(nodes.length, 1);
+  assert.equal(nodes[0].entry.status, 'rejected');
+  // リクエストを requests/ から消しても、何を拒否したかがここに残る
+  const item = history.getTreeItem(nodes[0]);
+  assert.match(String(item.description), /拒否/);
 });
 
 test('ログ表示: 仮想ドキュメントが実ファイルの中身を返す', async () => {
