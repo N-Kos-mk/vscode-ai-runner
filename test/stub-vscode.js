@@ -71,7 +71,16 @@ const vscode = {
     showInformationMessage: () => Promise.resolve(undefined),
     showErrorMessage: () => Promise.resolve(undefined),
     showTextDocument: () => Promise.resolve(undefined),
+    showInputBox: () => Promise.resolve(undefined),
+    createWebviewPanel: () => ({
+      title: '',
+      webview: { html: '', onDidReceiveMessage: () => ({ dispose: () => {} }), postMessage: () => {} },
+      onDidDispose: () => ({ dispose: () => {} }),
+      reveal: () => {},
+      dispose: () => {},
+    }),
   },
+  ViewColumn: { Active: -1 },
   RelativePattern: class {
     constructor(base, pattern) {
       this.base = base;

@@ -227,16 +227,16 @@ export class RequestTreeProvider implements vscode.TreeDataProvider<Node> {
     item.description = active ? runningDescription(active, now) : commandText(spec);
     item.tooltip = active
       ? runningTooltip(active, now, commandText(spec))
-      : tooltip({ ...spec, label }, 'クリックでリクエスト本文を開きます。実行は▶ボタンから。');
+      : tooltip({ ...spec, label }, 'クリックで詳細パネルを開きます。実行は▶ボタン、または詳細パネルから。');
     item.iconPath = active
       ? new vscode.ThemeIcon('loading~spin')
       : new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.yellow'));
     item.contextValue = `request.${active ? 'running' : 'idle'}`;
-    // 承認前はリクエスト本文を開いて中身を確認できることを優先する。
+    // 承認前は整形された詳細パネルで中身を確認できるようにする（生JSONは開かない）。
     // 実行中はログの方が知りたい情報になる。
     item.command = active
       ? { command: 'aiRunner.openLog', title: 'ログを開く', arguments: [node] }
-      : { command: 'vscode.open', title: '内容を確認', arguments: [vscode.Uri.file(req.file)] };
+      : { command: 'aiRunner.showRequest', title: '詳細を確認', arguments: [node] };
     return item;
   }
 }

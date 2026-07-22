@@ -129,6 +129,10 @@
         "icon": "$(output)"
       },
       {
+        "command": "aiRunner.showRequest",
+        "title": "リクエストの詳細を表示"
+      },
+      {
         "command": "aiRunner.refreshHistory",
         "title": "履歴を再読み込み",
         "icon": "$(refresh)"
@@ -221,6 +225,10 @@
         },
         {
           "command": "aiRunner.openHistoryLog",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.showRequest",
           "when": "false"
         }
       ]

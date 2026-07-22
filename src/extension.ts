@@ -11,6 +11,7 @@ import { CommandSpec, RequestFile } from './core/types';
 import { AI_SPEC_MD, GITIGNORE, SAMPLE_COMMANDS_JSON } from './templates';
 import { HistoryNode, HistoryTreeProvider } from './ui/historyTree';
 import { LogDocumentProvider } from './ui/logDocument';
+import { RequestPanel } from './ui/requestPanel';
 import { RunnerStatusBar } from './ui/statusBar';
 import { CommandTreeProvider, Node, RequestTreeProvider } from './ui/trees';
 
@@ -32,6 +33,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const requestTree = new RequestTreeProvider(requestStore, runner);
   const historyTree = new HistoryTreeProvider(paths);
   const logProvider = new LogDocumentProvider();
+  // パネルのボタンから既存の実行/拒否ロジックを呼ぶ。requestStore から最新の
+  // リクエスト内容を引き直すのは、パネル表示中にファイルが書き換わる可能性があるため。
+  const requestPanel = new RequestPanel({
+    onRun: (requestId, file) => {
+      const req = requestStore.get(requestId)?.request;
+      if (req) {
+        void runRequest(req, file, { viaPanel: true });
+      }
+    },
+    onReject: (requestId, file) => {
+      const req = requestStore.get(requestId)?.request;
+      if (req) {
+        void rejectByRequest(req, file);
+      }
+    },
+  });
 
   // logs/index.json の変更を監視する。同一プロセスの実行は runner.onDidChange で
   // 拾えるが、別ウィンドウやAIによる外部変更にも追従できるようファイルも見る。
@@ -49,11 +66,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     git,
     statusBar,
     indexWatcher,
+    requestPanel,
     vscode.workspace.registerTextDocumentContentProvider(LogDocumentProvider.scheme, logProvider),
-    vscode.window.createTreeView('aiRunner.commands', { treeDataProvider: commandTree }),
-    vscode.window.createTreeView('aiRunner.requests', { treeDataProvider: requestTree }),
-    vscode.window.createTreeView('aiRunner.history', { treeDataProvider: historyTree }),
   );
+
+  // バッジを更新するためツリービューは参照を保持する。アクティビティバーのアイコンには
+  // 各ビューのバッジの合計が1つ表示され、内訳は各ビューのタイトル横に出る（VSCodeの仕様）。
+  const requestsView = vscode.window.createTreeView('aiRunner.requests', { treeDataProvider: requestTree });
+  const commandsView = vscode.window.createTreeView('aiRunner.commands', { treeDataProvider: commandTree });
+  const historyView = vscode.window.createTreeView('aiRunner.history', { treeDataProvider: historyTree });
+  context.subscriptions.push(requestsView, commandsView, historyView);
 
   const refreshAll = () => {
     commandTree.refresh();
@@ -61,8 +83,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     statusBar.update();
     // 実行の開始・終了で index.json が更新されるため、履歴も読み直す。
     void historyTree.load();
+    // 承認・拒否されたリクエストは requests/ から消える。表示中のパネルを閉じる。
+    requestPanel.closeIfStale((id) => requestStore.get(id) !== undefined);
+    updateBadges();
     syncTicker();
   };
+
+  function updateBadges(): void {
+    // 実行可能な承認待ち（検証を通ったもの）のみ数える。壊れたリクエストは実行要求ではない。
+    const pending = requestStore.all.filter((item) => item.request).length;
+    requestsView.badge = badgeFor(pending, `件の承認待ちリクエスト`);
+    historyView.badge = badgeFor(runner.runningCount, `件を実行中`);
+  }
 
   /**
    * 実行中は経過時間・最終出力からの経過を毎秒更新する。これがないと表示が
@@ -114,6 +146,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   register('aiRunner.reject', (node: Node) => rejectRequest(node));
   register('aiRunner.openLog', (node: Node) => openLog(node));
   register('aiRunner.openHistoryLog', (node: HistoryNode) => openHistoryLog(node));
+  register('aiRunner.showRequest', (node: Node) => {
+    if (node.type === 'request' && node.request) {
+      requestPanel.show(node.request, node.file);
+    }
+  });
   register('aiRunner.showOutput', () => runner.showOutput());
   register('aiRunner.pin', (node: Node) => commandStore.setPinned(keyOf(node), true));
   register('aiRunner.unpin', (node: Node) => commandStore.setPinned(keyOf(node), false));
@@ -151,10 +188,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * リクエストの実行。ユーザーのクリックが唯一の起点であり、自動実行の経路は存在しない。
    * requests/ には外部AIだけでなく、リポジトリをcloneした第三者もファイルを置けるため。
    */
-  async function runRequest(request: RequestFile, file: string): Promise<void> {
+  async function runRequest(
+    request: RequestFile,
+    file: string,
+    opts?: { viaPanel?: boolean },
+  ): Promise<void> {
     const spec: CommandSpec = { ...request, id: request.requestId };
-    const needsConfirm =
-      spec.confirm || vscode.workspace.getConfiguration('aiRunner').get<boolean>('requests.confirm', true);
+    // 詳細パネル経由の場合はパネル自体が全文確認を兼ねるため、一般の確認は省く。
+    // ただし破壊的（confirm: true）だけは、経路に関わらず追加のダイアログを残す。
+    const needsConfirm = opts?.viaPanel
+      ? !!spec.confirm
+      : spec.confirm || vscode.workspace.getConfiguration('aiRunner').get<boolean>('requests.confirm', true);
     if (needsConfirm && !(await confirmRequest(request))) {
       return;
     }
@@ -164,15 +208,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await requestStore.consume(file);
   }
 
+  function rejectRequest(node: Node): Promise<void> {
+    if (node.type !== 'request' || !node.request) {
+      return Promise.resolve();
+    }
+    return rejectByRequest(node.request, node.file);
+  }
+
   /**
    * 拒否は「何もしない」では済まない。AI側は結果ファイルの出現を待っているため、
    * 拒否したことを logs/<requestId>.json に必ず書き残す。
    */
-  async function rejectRequest(node: Node): Promise<void> {
-    if (node.type !== 'request' || !node.request) {
-      return;
-    }
-    const request = node.request;
+  async function rejectByRequest(request: RequestFile, file: string): Promise<void> {
     const note = await vscode.window.showInputBox({
       title: `「${request.label}」を拒否`,
       prompt: 'AIに伝える理由（省略可）。ここに書いた内容はログに記録され、AIが読みます',
@@ -195,7 +242,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'rejected',
       note.trim() || 'ユーザーが実行を拒否しました',
     );
-    await requestStore.consume(node.file);
+    await requestStore.consume(file);
   }
 
   function confirmDestructive(spec: CommandSpec): Thenable<boolean> {
@@ -315,6 +362,11 @@ function keyOf(node: Node): string {
     return node.request.requestId;
   }
   throw new Error('この項目には実行できる対象がありません。');
+}
+
+/** ツリービューのバッジ。0件のときは undefined を返してバッジ自体を消す。 */
+export function badgeFor(count: number, unitLabel: string): vscode.ViewBadge | undefined {
+  return count > 0 ? { value: count, tooltip: `${count} ${unitLabel}` } : undefined;
 }
 
 /**

@@ -26,6 +26,8 @@ const { readIndex, writeTerminalLog, RunLogWriter } = require('../out/core/logSt
 const { formatAgo, formatDuration, runningDescription } = require('../out/ui/trees');
 const { LogDocumentProvider } = require('../out/ui/logDocument');
 const { HistoryTreeProvider } = require('../out/ui/historyTree');
+const { renderRequestHtml, escapeHtml } = require('../out/ui/requestPanel');
+const { badgeFor } = require('../out/extension');
 
 async function makeWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-runner-test-'));
@@ -356,6 +358,56 @@ test('通し: 拒否してもAIが待ち続けないようログが残る', asyn
 
   const index = await readIndex(paths);
   assert.equal(index.runs[0].status, 'rejected');
+});
+
+test('詳細パネル: AIが書いた文字列はHTMLエスケープされる（XSS対策）', () => {
+  // label や command は外部AIが書く未検証の文字列。マークアップがそのまま
+  // Webviewに入るとスクリプトが実行されうるため、無害化されることを確認する。
+  const html = renderRequestHtml(
+    {
+      requestId: 'evil',
+      label: '<img src=x onerror=alert(1)>',
+      kind: 'oneshot',
+      command: 'echo "</pre><script>alert(1)</script>"',
+      description: 'a & b < c',
+    },
+    'testnonce',
+  );
+
+  assert.doesNotMatch(html, /<img src=x/, 'labelの生タグが埋め込まれないこと');
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/, 'command内のscriptタグが生で入らないこと');
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/, 'エスケープ済みで表示されること');
+  assert.match(html, /a &amp; b &lt; c/);
+  // CSPとnonceが効いていること（自前スクリプト以外を弾く）
+  assert.match(html, /Content-Security-Policy/);
+  assert.match(html, /script-src 'nonce-testnonce'/);
+  assert.match(html, /default-src 'none'/);
+});
+
+test('詳細パネル: escapeHtml が主要な文字を変換する', () => {
+  assert.equal(escapeHtml(`<>&"'`), '&lt;&gt;&amp;&quot;&#39;');
+  assert.equal(escapeHtml('plain text'), 'plain text');
+});
+
+test('詳細パネル: 拒否ボタンは警告色クラスを持つ', () => {
+  const html = renderRequestHtml({ requestId: 'r', label: 'r', kind: 'oneshot', command: 'x' }, 'n');
+  assert.match(html, /id="reject" class="danger"/, '拒否ボタンが danger クラスであること');
+  assert.match(html, /\.danger[\s\S]*errorForeground/, 'danger が警告色を使うこと');
+});
+
+test('バッジ: 0件では非表示、1件以上で件数とツールチップを出す', () => {
+  assert.equal(badgeFor(0, '件の承認待ち'), undefined);
+  assert.deepEqual(badgeFor(3, '件の承認待ち'), { value: 3, tooltip: '3 件の承認待ち' });
+  assert.deepEqual(badgeFor(1, '件を実行中'), { value: 1, tooltip: '1 件を実行中' });
+});
+
+test('詳細パネル: sequenceのstepsとコマンドが表示に反映される', () => {
+  const html = renderRequestHtml(
+    { requestId: 'seq', label: 'ビルド一式', kind: 'sequence', steps: ['npm ci', 'npm run build'] },
+    'n',
+  );
+  assert.match(html, /npm ci\nnpm run build/, 'stepsが順に表示されること');
+  assert.match(html, /sequence/);
 });
 
 test('履歴: 実行すると新しい順で履歴に載り、ログパスが辿れる', async () => {
