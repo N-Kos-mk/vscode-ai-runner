@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Command Runner - requests/<requestId>.json",
+  "description": "外部AIがユーザーにコマンド実行を依頼するためのファイル。実行は必ずユーザーの操作を起点とする",
+  "type": "object",
+  "required": ["requestId", "label"],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "ファイル名（拡張子を除く）と一致させること。結果は logs/<requestId>.json と logs/<requestId>.log に出力される"
+    },
+    "label": {
+      "type": "string",
+      "description": "ユーザーがサイドバーで見る短い説明。実際のコマンドと食い違う内容を書いてはならない"
+    },
+    "kind": {
+      "enum": ["oneshot", "daemon", "sequence"],
+      "default": "oneshot"
+    },
+    "command": { "type": "string", "description": "実行するコマンド。シェル経由で実行される" },
+    "steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "kind=sequence のとき、順に実行するコマンド。失敗時点で打ち切られる"
+    },
+    "description": { "type": "string", "description": "なぜ実行したいのか。ユーザーの承認判断に使われる" },
+    "cwd": { "type": "string", "description": "ワークスペースルートからの相対パス。外部は指定不可" },
+    "env": { "type": "object", "additionalProperties": { "type": "string" } },
+    "confirm": { "type": "boolean", "description": "破壊的な操作には必ず true を指定すること" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "sequence" } }, "required": ["kind"] },
+      "then": { "required": ["steps"] },
+      "else": { "required": ["command"] }
+    }
+  ]
+}

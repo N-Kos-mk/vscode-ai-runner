@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Command Runner - commands.json",
+  "type": "object",
+  "required": ["commands"],
+  "properties": {
+    "schemaVersion": { "type": "number" },
+    "commands": {
+      "type": "array",
+      "description": "プロジェクトで繰り返し使うコマンドの定義",
+      "items": { "$ref": "#/definitions/command" }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "command": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "description": "一意なID。ログのファイル名にも使われるため、英数字・ドット・ハイフン・アンダースコアのみ"
+        },
+        "label": { "type": "string", "description": "サイドバーに表示される名前" },
+        "kind": {
+          "enum": ["oneshot", "daemon", "sequence"],
+          "default": "oneshot",
+          "description": "oneshot=単発 / daemon=終了しない常駐 / sequence=複数を順番に実行"
+        },
+        "command": { "type": "string", "description": "実行するコマンド。シェル経由で実行される" },
+        "steps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "kind=sequence のとき、順に実行するコマンド。他コマンドのidも指定可。失敗時点で打ち切られる"
+        },
+        "cwd": { "type": "string", "description": "ワークスペースルートからの相対パス。外部は指定不可" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "description": { "type": "string" },
+        "pinned": { "type": "boolean", "description": "ピン留めの初期値。以後の切り替えはVSCode側に保存される" },
+        "confirm": { "type": "boolean", "description": "実行前に確認ダイアログを出す。破壊的な操作に使う" },
+        "branches": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "指定ブランチにいるときだけ表示する。'release/*' のようなワイルドカード可"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "sequence" } }, "required": ["kind"] },
+          "then": { "required": ["steps"] },
+          "else": { "required": ["command"] }
+        }
+      ]
+    }
+  }
+}

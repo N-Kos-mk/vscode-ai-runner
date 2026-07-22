@@ -1,0 +1,15 @@
+# .vsix に含めないもの。拡張機能の実行に必要なのは
+# out/, resources/, schemas/, package.json, README.md のみ。
+
+# ビルド元とテスト（成果物は out/ に入っている）
+src/**
+test/**
+tsconfig.json
+out/**/*.map
+
+# 開発用の設定・メタファイル
+.vscode/**
+.git/**
+.gitignore
+.vscodeignore
+package-lock.json

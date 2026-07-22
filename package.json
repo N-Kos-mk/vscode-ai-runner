@@ -1,0 +1,242 @@
+{
+  "name": "ai-runner",
+  "displayName": "AI Command Runner",
+  "description": "外部AIが書いたリクエストと、プロジェクト固有のコマンドを、構造化ログ付きで実行する",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/N-Kos-mk/vscode-ai-runner.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "任意のコマンドをローカルで実行するため、信頼されたワークスペースでのみ動作します。"
+    }
+  },
+  "activationEvents": [
+    "workspaceContains:.vscode/ai-runner/**"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiRunner",
+          "title": "AI Command Runner",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiRunner": [
+        {
+          "id": "aiRunner.requests",
+          "name": "AIリクエスト",
+          "contextualTitle": "AIリクエスト"
+        },
+        {
+          "id": "aiRunner.commands",
+          "name": "コマンド",
+          "contextualTitle": "コマンド"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "aiRunner.requests",
+        "contents": "AIからの実行リクエストはありません。\n外部AIが `.vscode/ai-runner/requests/*.json` にファイルを書き込むと、ここに承認待ちとして表示されます。\n[仕様をREADMEで確認](command:aiRunner.openReadme)"
+      },
+      {
+        "view": "aiRunner.commands",
+        "contents": "登録済みのコマンドがありません。\n[commands.json を作成](command:aiRunner.initWorkspace)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "aiRunner.run",
+        "title": "実行",
+        "icon": "$(play)"
+      },
+      {
+        "command": "aiRunner.stop",
+        "title": "停止",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "aiRunner.reject",
+        "title": "拒否",
+        "icon": "$(close)"
+      },
+      {
+        "command": "aiRunner.openLog",
+        "title": "ログを開く",
+        "icon": "$(output)"
+      },
+      {
+        "command": "aiRunner.showOutput",
+        "title": "出力パネルを表示",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "aiRunner.pin",
+        "title": "ピン留め",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "aiRunner.unpin",
+        "title": "ピン留めを解除",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "aiRunner.refresh",
+        "title": "再読み込み",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aiRunner.editCommands",
+        "title": "commands.json を編集",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "aiRunner.initWorkspace",
+        "title": "AI Runner: ワークスペースを初期化"
+      },
+      {
+        "command": "aiRunner.openReadme",
+        "title": "AI Runner: AI向け仕様を表示"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aiRunner.refresh",
+          "when": "view == aiRunner.commands",
+          "group": "navigation@2"
+        },
+        {
+          "command": "aiRunner.editCommands",
+          "when": "view == aiRunner.commands",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aiRunner.showOutput",
+          "when": "view == aiRunner.requests",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "aiRunner.run",
+          "when": "viewItem =~ /\\.idle$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "aiRunner.stop",
+          "when": "viewItem =~ /\\.running$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "aiRunner.reject",
+          "when": "viewItem == request.idle",
+          "group": "inline@2"
+        },
+        {
+          "command": "aiRunner.pin",
+          "when": "viewItem =~ /^command\\.unpinned\\./",
+          "group": "inline@3"
+        },
+        {
+          "command": "aiRunner.unpin",
+          "when": "viewItem =~ /^command\\.pinned\\./",
+          "group": "inline@3"
+        },
+        {
+          "command": "aiRunner.openLog",
+          "when": "viewItem =~ /^(command|request)\\./",
+          "group": "1_log"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "aiRunner.run",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.stop",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.reject",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.pin",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.unpin",
+          "when": "false"
+        },
+        {
+          "command": "aiRunner.openLog",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Command Runner",
+      "properties": {
+        "aiRunner.logs.maxLines": {
+          "type": "number",
+          "default": 5000,
+          "description": "1実行あたりに保持するログ行数の上限。超えた分は古い行から破棄されます（常駐コマンド対策）。"
+        },
+        "aiRunner.logs.tailLines": {
+          "type": "number",
+          "default": 50,
+          "description": "メタJSONに埋め込む末尾ログの行数。AIが1ファイルだけ読めば概況を掴めるようにするためのもの。"
+        },
+        "aiRunner.notifyOnComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "コマンド完了時にVSCodeの通知を表示する。"
+        },
+        "aiRunner.requests.confirm": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "AIリクエストの実行前に、コマンド全文を表示した確認ダイアログを出す。\n\nリクエストファイルはAIだけでなく、リポジトリを取得した第三者も書き込める外部入力です。既定で有効にしています。ワンクリックを優先する場合のみ無効にしてください（`confirm: true` を持つリクエスト個別の確認は、この設定に関わらず常に行われます）。"
+        }
+      }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.vscode/ai-runner/commands.json",
+        "url": "./schemas/commands.schema.json"
+      },
+      {
+        "fileMatch": "**/.vscode/ai-runner/requests/*.json",
+        "url": "./schemas/request.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test test/run.js",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.6.0"
+  }
+}
