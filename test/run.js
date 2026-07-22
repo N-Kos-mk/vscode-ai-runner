@@ -24,6 +24,7 @@ const { RequestStore } = require('../out/core/requestStore');
 const { parseCommandsFile, parseRequestFile, ValidationError } = require('../out/core/validate');
 const { readIndex, writeTerminalLog, RunLogWriter } = require('../out/core/logStore');
 const { formatAgo, formatDuration, runningDescription } = require('../out/ui/trees');
+const { LogDocumentProvider } = require('../out/ui/logDocument');
 
 async function makeWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-runner-test-'));
@@ -354,6 +355,38 @@ test('通し: 拒否してもAIが待ち続けないようログが残る', asyn
 
   const index = await readIndex(paths);
   assert.equal(index.runs[0].status, 'rejected');
+});
+
+test('ログ表示: 仮想ドキュメントが実ファイルの中身を返す', async () => {
+  const { paths } = await makeWorkspace();
+  const runner = new Runner();
+  await runner.run({
+    paths,
+    source: 'request',
+    spec: { id: 'show', label: 'show', kind: 'oneshot', command: 'echo 表示テスト' },
+  });
+  runner.dispose();
+
+  const provider = new LogDocumentProvider();
+  const uri = LogDocumentProvider.uriFor(paths.logFileFor('show'));
+  // タブに出る名前は basename、実ファイルの場所は query に入る。
+  assert.equal(uri.scheme, 'ai-runner-log');
+  assert.equal(uri.path, 'show.log');
+  assert.equal(uri.query, paths.logFileFor('show'));
+
+  const content = await provider.provideTextDocumentContent(uri);
+  assert.match(content, /表示テスト/, '実ファイルの中身が表示されること');
+});
+
+test('ログ表示: 存在しないログでも壊れず案内を返す', async () => {
+  const provider = new LogDocumentProvider();
+  const missing = await provider.provideTextDocumentContent(
+    LogDocumentProvider.uriFor('/no/such/path/run.log'),
+  );
+  assert.match(missing, /見つかりません/, 'ENOENTでも例外を投げず案内文を返すこと');
+
+  const empty = await provider.provideTextDocumentContent({ scheme: 'ai-runner-log', path: 'x', query: '' });
+  assert.match(empty, /指定されていません/);
 });
 
 test('表示: 経過時間の整形', () => {

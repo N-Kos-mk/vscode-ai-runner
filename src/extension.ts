@@ -9,6 +9,7 @@ import { Runner } from './core/runner';
 import { readIndex, writeTerminalLog } from './core/logStore';
 import { CommandSpec, RequestFile } from './core/types';
 import { AI_SPEC_MD, GITIGNORE, SAMPLE_COMMANDS_JSON } from './templates';
+import { LogDocumentProvider } from './ui/logDocument';
 import { RunnerStatusBar } from './ui/statusBar';
 import { CommandTreeProvider, Node, RequestTreeProvider } from './ui/trees';
 
@@ -28,6 +29,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const commandTree = new CommandTreeProvider(commandStore, runner, git);
   const requestTree = new RequestTreeProvider(requestStore, runner);
+  const logProvider = new LogDocumentProvider();
 
   context.subscriptions.push(
     runner,
@@ -35,6 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     requestStore,
     git,
     statusBar,
+    vscode.workspace.registerTextDocumentContentProvider(LogDocumentProvider.scheme, logProvider),
     vscode.window.createTreeView('aiRunner.commands', { treeDataProvider: commandTree }),
     vscode.window.createTreeView('aiRunner.requests', { treeDataProvider: requestTree }),
   );
@@ -215,7 +218,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('このコマンドの実行ログはまだありません。');
       return;
     }
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(target));
+    // 実ファイルではなく仮想ドキュメントとして開く。エクスプローラーが logs/ を
+    // 自動展開して大量のログで埋まるのを避けるため（LogDocumentProvider を参照）。
+    const uri = LogDocumentProvider.uriFor(target);
+    // 同じログを既に開いている場合に備え、最新内容へ更新してから表示する。
+    logProvider.refresh(uri);
+    const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, { preview: true });
   }
 

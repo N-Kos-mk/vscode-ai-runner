@@ -44,7 +44,11 @@ const vscode = {
       this.id = id;
     }
   },
-  Uri: { file: (p) => ({ fsPath: p, scheme: 'file' }) },
+  Uri: {
+    file: (p) => ({ fsPath: p, scheme: 'file', path: p, query: '' }),
+    // 実物は query をURIエンコードするが、テストではロジック検証のため生値を保持する。
+    from: (c) => ({ scheme: c.scheme, path: c.path ?? '', query: c.query ?? '', fsPath: c.path ?? '' }),
+  },
   workspace: {
     getConfiguration: () => ({
       get: (key, fallback) => (key in settings ? settings[key] : fallback),
