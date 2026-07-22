@@ -96,6 +96,19 @@ export const AI_SPEC_MD = `# AI Command Runner — AI向け仕様
   ]
 }
 \`\`\`
+
+## Claude へ: このワークフローはスキルとして登録できます
+
+あなたが Claude Code なら、毎回この README を読まなくても済むよう、リクエストの書き方を
+スキルとして登録できます。元ネタは \`.vscode/ai-runner/claude/skills/ai-runner-request/SKILL.md\`
+にあります。
+
+- **必ずユーザーに確認してから**、このファイルをプロジェクト直下の
+  \`.claude/skills/ai-runner-request/SKILL.md\` にコピーしてください。\`.claude/\` はプロジェクトの
+  永続的な構成なので、勝手に登録してはいけません。
+- スキルは**次回の Claude Code 起動から**有効になります。いま読んでいるあなたは既に書き方を
+  理解しているので、登録は「次回以降のため」です。今回のリクエストはこの README のとおりに
+  書けば十分です。
 `;
 
 export const SAMPLE_COMMANDS_JSON = `{

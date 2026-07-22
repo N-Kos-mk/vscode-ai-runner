@@ -341,6 +341,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await writeIfAbsent(paths.commandsFile, SAMPLE_COMMANDS_JSON);
     await writeIfAbsent(path.join(paths.root, 'README.md'), AI_SPEC_MD);
     await writeIfAbsent(path.join(paths.root, '.gitignore'), GITIGNORE);
+    await copyBundledSkill();
+  }
+
+  /**
+   * 拡張に同梱したスキルを配置元としてコピーする。README の誘導に従い、
+   * AI がこれをユーザーのプロジェクトの .claude/skills/ へ登録する。
+   * 同梱ファイルを実行時に読むことで、templates.ts への文字列二重管理を避けている。
+   */
+  async function copyBundledSkill(): Promise<void> {
+    const src = path.join(context.extensionUri.fsPath, 'skills', 'ai-runner-request', 'SKILL.md');
+    const dest = path.join(paths.root, 'claude', 'skills', 'ai-runner-request', 'SKILL.md');
+    try {
+      const content = await fs.readFile(src, 'utf8');
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      await writeIfAbsent(dest, content);
+    } catch {
+      // 同梱スキルが見つからなくても初期化自体は成立させる（致命ではない）。
+    }
   }
 }
 

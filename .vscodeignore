@@ -13,3 +13,6 @@ out/**/*.map
 .gitignore
 .vscodeignore
 package-lock.json
+
+# README用スクリーンショット（GitHub表示専用。実行時のアイコンはicon.svgのみ必要）
+resources/screenshot-sidebar.png
