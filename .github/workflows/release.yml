@@ -1,0 +1,48 @@
+name: Release
+
+# v0.1.0 のような形式のタグを push すると、テストとビルドを通してから
+# .vsix を作り、GitHub Release に添付する。手元で vsce package して
+# 手動アップロードする手間を無くすためのもの。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      # package.json の version とタグ名が食い違ったまま公開されるのを防ぐ。
+      # 例えば v0.2.0 タグを push したのに package.json が 0.1.0 のままだと、
+      # 生成される .vsix のファイル名やMarketplace上のバージョン表記が
+      # タグと矛盾してしまう。
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::タグ $GITHUB_REF_NAME と package.json の version ($PKG_VERSION) が一致しません"
+            exit 1
+          fi
+
+      - run: npm test
+
+      - name: Package .vsix
+        run: npx @vscode/vsce package
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.vsix'
+          generate_release_notes: true
