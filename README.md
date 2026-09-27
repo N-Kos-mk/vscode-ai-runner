@@ -24,10 +24,12 @@ Marketplaceには公開していません。以下のいずれかで導入しま
 [Releases](https://github.com/N-Kos-mk/vscode-ai-runner/releases/latest) から `.vsix` ファイルをダウンロードし、次のいずれかでインストールします。
 
 ```bash
-code --install-extension ai-runner-0.1.0.vsix
+code --install-extension ai-runner-0.1.1.vsix
 ```
 
 またはVSCodeの拡張パネルの「…」メニュー →「VSIX からのインストール」。
+
+アップデートも同じ手順で、新しい `.vsix` を上書きインストールします。バージョンごとの変更点とアップデート時の注意は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
 **ソースからビルド（開発者向け）**
 
