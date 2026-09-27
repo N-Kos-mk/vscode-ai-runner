@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { AnsiStripper } from './ansi';
 import { RunLogWriter } from './logStore';
 import { WorkspacePaths } from './paths';
 import { CommandSpec, RunLog, RunStatus } from './types';
@@ -167,8 +168,12 @@ export class Runner implements vscode.Disposable {
       run.child = child;
 
       const consume = (stream: NodeJS.ReadableStream | null, channel: 'stdout' | 'stderr') => {
+        const stripper = new AnsiStripper();
         stream?.on('data', (data: Buffer) => {
-          const text = data.toString();
+          const text = stripper.push(data.toString());
+          if (text === '') {
+            return;
+          }
           run.writer.append(text, channel);
           this.output.append(text);
         });

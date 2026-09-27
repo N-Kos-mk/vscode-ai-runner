@@ -28,6 +28,7 @@ const { LogDocumentProvider } = require('../out/ui/logDocument');
 const { HistoryTreeProvider } = require('../out/ui/historyTree');
 const { renderRequestHtml, escapeHtml } = require('../out/ui/requestPanel');
 const { badgeFor } = require('../out/extension');
+const { AnsiStripper } = require('../out/core/ansi');
 
 async function makeWorkspace() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-runner-test-'));
@@ -585,4 +586,46 @@ test('検証: 不正な定義を拒否する', () => {
       }),
     ValidationError,
   );
+});
+
+test('ANSI: 色付けの制御コードを除去する', () => {
+  const stripper = new AnsiStripper();
+  const out = stripper.push(
+    '\x1b[32m\x1b[1mVITE\x1b[22m v8.3.1\x1b[39m  ➜  \x1b[1mLocal\x1b[22m: \x1b]8;;http://x\x07link\x1b]8;;\x07\n',
+  );
+  assert.equal(out, 'VITE v8.3.1  ➜  Local: link\n');
+});
+
+test('ANSI: チャンク境界で分断されたシーケンスも除去する', () => {
+  const stripper = new AnsiStripper();
+  const out = ['a\x1b', '[3', '6mb\x1b[', '39m', 'c'].map((c) => stripper.push(c)).join('');
+  assert.equal(out, 'abc');
+});
+
+test('ANSI: 終端しない断片で以降の出力を止めない', () => {
+  const stripper = new AnsiStripper();
+  const out = stripper.push('\x1b]' + 'x'.repeat(2000));
+  assert.ok(out.length >= 2000);
+});
+
+test('oneshot: 子プロセスの色付き出力がログに制御コードなしで残る', async () => {
+  const { paths } = await makeWorkspace();
+  const runner = new Runner();
+  const log = await runner.run({
+    paths,
+    source: 'command',
+    spec: {
+      id: 'color',
+      label: 'color',
+      kind: 'oneshot',
+      command: `node -e "process.stdout.write(String.fromCharCode(27) + '[32mgreen' + String.fromCharCode(27) + '[39m')"`,
+    },
+  });
+
+  assert.equal(log.status, 'success');
+  const raw = await fs.readFile(path.join(paths.workspaceRoot, log.logFile), 'utf8');
+  // 1行目はコマンドの記録なので、プロセス出力の行だけを見る。
+  assert.ok(raw.split('\n').includes('green'), 'ログに制御コードを含まない出力行が残ること');
+  assert.doesNotMatch(raw, /\x1b/);
+  runner.dispose();
 });
